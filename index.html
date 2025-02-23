@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生成绩管理系统</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        #addStudentBtn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            border-radius: 15px;
+            font-size: 16px;
+        }
+
+        .chart-container {
+            margin: 20px;
+            display: inline-block;
+            width: 350px;
+            height: 400px;
+            position: relative;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: visible;
+        }
+
+        .chart-container h4 {
+            text-align: center;
+            margin: 10px 0 20px;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .edit-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+
+        #editModal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 25px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            width: 400px;
+            z-index: 1000;
+        }
+
+        .input-columns {
+            display: flex;
+            gap: 20px;
+            margin: 15px 0;
+        }
+
+        .column {
+            flex: 1;
+        }
+
+        #editModal input {
+            width: 90%;
+            padding: 6px;
+            margin-top: 3px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .button-row {
+            text-align: right;
+            margin-top: 15px;
+        }
+
+        #saveBtn {
+            background: #4CAF50;
+            color: white;
+        }
+
+        #cancelBtn {
+            background: #f44336;
+            color: white;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <button id="addStudentBtn">+ 添加学生</button>
+    <div id="chartsContainer"></div>
+
+    <div id="editModal">
+        <h3 style="margin-top: 0">学生成绩编辑</h3>
+        <div class="input-row">
+            <label>密码: <input type="password" id="password" required></label>
+        </div>
+        <div class="input-row">
+            <label>姓名: <input type="text" id="name" placeholder="学生姓名" required></label>
+        </div>
+        <div class="input-columns">
+            <div class="column">
+                <label>数学（120）: <input type="number" id="math" min="0" max="120" required></label>
+                <label>语文（120）: <input type="number" id="chinese" min="0" max="120" required></label>
+                <label>英语（120）: <input type="number" id="english" min="0" max="120" required></label>
+                <label>物理（80）: <input type="number" id="physics" min="0" max="80" required></label>
+            </div>
+            <div class="column">
+                <label>地理（50）: <input type="number" id="geography" min="0" max="50" required></label>
+                <label>生物（50）: <input type="number" id="biology" min="0" max="50" required></label>
+                <label>历史（80）: <input type="number" id="history" min="0" max="80" required></label>
+                <label>政治（80）: <input type="number" id="politics" min="0" max="80" required></label>
+            </div>
+        </div>
+        <div class="button-row">
+            <button id="cancelBtn">取消</button>
+            <button id="saveBtn">保存修改</button>
+        </div>
+    </div>
+
+<script>
+const labels = ['数学', '语文', '英语', '物理', '地理', '生物', '历史', '政治'];
+const PASSWORD = '123456';
+let currentChart = null;
+
+// 分数转换规则
+const scoreConverters = {
+    math: v => v,
+    chinese: v => v,
+    english: v => v,
+    physics: v => (v / 80) * 120,
+    geography: v => (v / 50) * 120,
+    biology: v => (v / 50) * 120,
+    history: v => (v / 80) * 120,
+    politics: v => (v / 80) * 120
+};
+
+// 图表配置
+const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+        r: {
+            beginAtZero: true,
+            max: 120,
+            ticks: {
+                stepSize: 20,
+                count: 6,
+                backdropColor: 'rgba(255,255,255,0.8)'
+            },
+            pointLabels: { font: { size: 12, weight: 'bold' } },
+            angleLines: { color: 'rgba(150,150,150,0.3)' },
+            grid: { color: 'rgba(200,200,200,0.3)' }
+        }
+    },
+    plugins: { legend: { display: false } },
+    layout: { padding: 20 }
+};
+
+// 初始化加载数据
+document.addEventListener('DOMContentLoaded', () => {
+    const savedData = JSON.parse(localStorage.getItem('studentData')) || [];
+    savedData.forEach(data => createChart(data.name, data.scores, false));
+});
+
+// 事件绑定
+document.getElementById('addStudentBtn').addEventListener('click', () => {
+    currentChart = null;
+    clearForm();
+    document.getElementById('editModal').style.display = 'block';
+});
+
+document.getElementById('saveBtn').addEventListener('click', handleSave);
+document.getElementById('cancelBtn').addEventListener('click', () => {
+    document.getElementById('editModal').style.display = 'none';
+});
+
+function handleSave() {
+    const password = document.getElementById('password').value;
+    if (password !== PASSWORD) return alert("密码错误！");
+
+    const name = document.getElementById('name').value.trim();
+    const scores = getScores();
+
+    if (!validateScores(scores)) return alert("成绩无效！");
+
+    currentChart ? updateChart(scores, name) : createChart(name, scores, true);
+    document.getElementById('editModal').style.display = 'none';
+}
+
+function createChart(name, rawScores, save = true) {
+    const container = document.createElement('div');
+    container.className = 'chart-container';
+    container.innerHTML = `
+        <h4>${name}</h4>
+        <button class="edit-btn">修改</button>
+        <canvas></canvas>
+    `;
+
+    const bgColor = generateValidColor(0.5);
+    const chart = new Chart(container.querySelector('canvas'), {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: name,
+                data: convertScores(rawScores),
+                backgroundColor: bgColor,
+                borderColor: bgColor.replace('0.5', '1'),
+                borderWidth: 2,
+                pointRadius: 3
+            }]
+        },
+        options: chartOptions
+    });
+
+    container.querySelector('.edit-btn').addEventListener('click', () => {
+        currentChart = chart;
+        fillForm(name, rawScores);
+        document.getElementById('editModal').style.display = 'block';
+    });
+
+    document.getElementById('chartsContainer').appendChild(container);
+    if (save) saveToStorage(name, rawScores);
+}
+
+// 辅助函数
+function generateValidColor(alpha) {
+    let r, g, b;
+    do {
+        r = Math.floor(Math.random() * 206) + 50;  // 50-255
+        g = Math.floor(Math.random() * 206) + 50;
+        b = Math.floor(Math.random() * 206) + 50;
+    } while (
+        (r > 200 && g < 100 && b < 100) ||
+        (r > 200 && g < 150 && b > 150) ||
+        (r > 150 && g < 100 && b > 150)
+    );
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function convertScores(scores) {
+    return Object.entries(scores).map(([k, v]) => scoreConverters[k](v));
+}
+
+function getScores() {
+    return {
+        math: +document.getElementById('math').value,
+        chinese: +document.getElementById('chinese').value,
+        english: +document.getElementById('english').value,
+        physics: +document.getElementById('physics').value,
+        geography: +document.getElementById('geography').value,
+        biology: +document.getElementById('biology').value,
+        history: +document.getElementById('history').value,
+        politics: +document.getElementById('politics').value
+    };
+}
+
+function validateScores(scores) {
+    const limits = { math:120, chinese:120, english:120, physics:80, geography:50, biology:50, history:80, politics:80 };
+    return Object.entries(scores).every(([k, v]) => v >= 0 && v <= limits[k]);
+}
+
+function fillForm(name, scores) {
+    document.getElementById('name').value = name;
+    document.getElementById('password').value = '';
+    document.getElementById('math').value = scores.math;
+    document.getElementById('chinese').value = scores.chinese;
+    document.getElementById('english').value = scores.english;
+    document.getElementById('physics').value = scores.physics;
+    document.getElementById('geography').value = scores.geography;
+    document.getElementById('biology').value = scores.biology;
+    document.getElementById('history').value = scores.history;
+    document.getElementById('politics').value = scores.politics;
+}
+
+function clearForm() {
+    document.getElementById('name').value = '';
+    document.getElementById('password').value = '';
+    document.querySelectorAll('#editModal input[type=number]').forEach(i => i.value = '');
+}
+
+function updateChart(scores, name) {
+    currentChart.data.datasets[0].data = convertScores(scores);
+    currentChart.data.datasets[0].label = name;
+    currentChart.update();
+    saveToStorage(name, scores);
+}
+
+function saveToStorage(name, scores) {
+    const data = JSON.parse(localStorage.getItem('studentData')) || [];
+    const index = data.findIndex(d => d.name === currentChart?.data.datasets[0].label);
+    if (index > -1) data[index] = { name, scores };
+    else data.push({ name, scores });
+    localStorage.setItem('studentData', JSON.stringify(data));
+}
+</script>
+</body>
+</html>
